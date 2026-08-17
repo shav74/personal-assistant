@@ -12,8 +12,9 @@ robotics controller.
 - **Edge processing (local):** wake word, STT (Whisper), TTS (Piper), and
   embeddings all run on-device. Audio never leaves the machine; only text
   goes to the cloud.
-- **Memory:** two-tier — SQLite for structured facts (v1, done) + Chroma
-  vector store for semantic recall (v2, planned).
+- **Memory:** two-tier — SQLite for structured facts, plus a Chroma
+  vector store (on-device embeddings) for semantic recall once there
+  are more facts than fit comfortably in a prompt.
 - **Permission layer:** every tool is classified safe (read-only,
   auto-run) or dangerous (side effects, requires explicit user
   confirmation). The LLM never has unilateral access to side effects.
@@ -41,6 +42,23 @@ the transport Phase 2's voice frontend will speak over. Send `{"type":
 `{"type": "confirm_response", "allow": true|false}`.
 
 Run tests with `pytest`.
+
+### Google Calendar sync (optional)
+
+`add_reminder` creates a matching calendar event when given a due date/time.
+Without setup it just degrades to a local-only reminder — nothing breaks.
+To turn it on:
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → new project
+   → enable the **Google Calendar API**.
+2. Credentials → Create Credentials → OAuth client ID → **Desktop app** →
+   download the JSON.
+3. Save it to `~/.assistant/google_credentials.json` (or point
+   `GOOGLE_CREDENTIALS_PATH` at it in `.env`).
+4. Run once: `python -m assistant.integrations.google_calendar` — opens a
+   browser for one-time consent, then caches a refresh token. Tool calls
+   never trigger this flow themselves (no browser popping up mid-chat, and
+   it works from the headless WebSocket server once step 4 is done).
 
 ## Roadmap
 
