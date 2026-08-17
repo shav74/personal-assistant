@@ -18,6 +18,8 @@ class Settings:
     model: str = os.getenv("ASSISTANT_MODEL", "claude-sonnet-5")
     assistant_name: str = os.getenv("ASSISTANT_NAME", "Niamh")
     data_dir: Path = Path(os.getenv("ASSISTANT_DATA_DIR", "~/.assistant")).expanduser()
+    server_host: str = os.getenv("ASSISTANT_SERVER_HOST", "127.0.0.1")
+    server_port: int = int(os.getenv("ASSISTANT_SERVER_PORT", "8000"))
 
     @property
     def db_path(self) -> Path:

@@ -1,34 +1,7 @@
-from types import SimpleNamespace
-
 import assistant.agent as agent_module
 from assistant.agent import Agent
 
-
-def text_block(text):
-    return SimpleNamespace(type="text", text=text)
-
-
-def tool_use_block(id_, name, input_):
-    return SimpleNamespace(type="tool_use", id=id_, name=name, input=input_)
-
-
-def make_response(content, stop_reason):
-    return SimpleNamespace(content=content, stop_reason=stop_reason)
-
-
-class FakeMessages:
-    def __init__(self, responses):
-        self._responses = list(responses)
-        self.calls = []
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-        return self._responses.pop(0)
-
-
-class FakeClient:
-    def __init__(self, responses):
-        self.messages = FakeMessages(responses)
+from .fakes import FakeClient, make_response, text_block, tool_use_block
 
 
 def make_agent(monkeypatch, responses, confirm=lambda desc: True):

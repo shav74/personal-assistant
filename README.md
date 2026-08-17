@@ -33,10 +33,20 @@ Try: *"what time is it?"*, *"remember that I prefer tea over coffee"*,
 *"note down: buy solder"*, *"how much disk space do I have?"* (this one
 will ask permission — that's the permission layer working).
 
+Or run it as a WebSocket server instead (`python -m
+assistant.interfaces.server`, endpoint `ws://127.0.0.1:8000/ws/chat`) —
+the transport Phase 2's voice frontend will speak over. Send `{"type":
+"user_message", "text": "..."}`; a dangerous tool call comes back as
+`{"type": "confirm_request", "description": "..."}`, reply with
+`{"type": "confirm_response", "allow": true|false}`.
+
+Run tests with `pytest`.
+
 ## Roadmap
 
 - [x] **Phase 1** — core agent: loop, tools, memory, CLI
-- [ ] Phase 1.5 — Chroma semantic memory, FastAPI server, more tools
+- [x] Phase 1.5 — Chroma semantic memory, FastAPI/WebSocket server, tests
+- [ ] more tools (weather, calendar/reminders, file search, ...)
 - [ ] **Phase 2** — voice: Windows audio frontend (wake word + Whisper)
   streaming to this backend over WebSocket; Piper TTS out
 - [ ] **Phase 3** — IoT: MQTT / Home Assistant tools
