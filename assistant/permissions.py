@@ -27,7 +27,7 @@ def check_permission(
     confirm: Callable[[str], bool],
 ) -> None:
     """Raise PermissionDenied unless the action is safe or user-approved."""
-    if not tool.dangerous:
+    if not tool.check_dangerous(tool_input):
         return
 
     description = (

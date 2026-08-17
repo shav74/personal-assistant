@@ -22,9 +22,16 @@ class Tool:
     input_schema: dict
     func: Callable[..., Any]
     dangerous: bool = False  # dangerous tools require user confirmation
+    is_dangerous: Callable[[dict], bool] | None = None  # per-call override
 
     def run(self, **kwargs) -> Any:
         return self.func(**kwargs)
+
+    def check_dangerous(self, tool_input: dict) -> bool:
+        """Whether this specific call requires confirmation."""
+        if self.is_dangerous is not None:
+            return self.is_dangerous(tool_input)
+        return self.dangerous
 
 
 class ToolRegistry:
@@ -59,6 +66,7 @@ def tool(
     description: str,
     input_schema: dict | None = None,
     dangerous: bool = False,
+    is_dangerous: Callable[[dict], bool] | None = None,
 ):
     """Decorator: turn a function into a registered tool.
 
@@ -66,6 +74,10 @@ def tool(
         @tool("get_time", "Get the current date and time.")
         def get_time() -> str:
             ...
+
+    `is_dangerous` lets a tool decide per-call whether confirmation is
+    needed (e.g. a shell tool that's fine for `ls` but not for `rm -rf`),
+    instead of every call being uniformly safe or uniformly dangerous.
     """
 
     def wrapper(func: Callable) -> Callable:
@@ -77,6 +89,7 @@ def tool(
                 or {"type": "object", "properties": {}, "required": []},
                 func=func,
                 dangerous=dangerous,
+                is_dangerous=is_dangerous,
             )
         )
         return func

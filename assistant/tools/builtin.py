@@ -1,12 +1,14 @@
 """Built-in starter tools.
 
 Safe tools run automatically; dangerous ones go through the permission
-layer. Notice `run_shell` is dangerous while `get_time` is not — this
-classification is the whole point of the permission model.
+layer. `run_shell` decides per-call via `is_dangerous` — a plain, unchained
+read-only command (see `_SAFE_SHELL_COMMANDS`) auto-runs, anything else
+requires confirmation.
 """
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from datetime import datetime
 
@@ -15,6 +17,28 @@ from ..memory.store import MemoryStore
 from .base import tool
 
 _memory = MemoryStore(settings.db_path)
+
+# Read-only / informational commands that run without confirmation. Matched
+# on the first word only, and only when the command has no shell
+# metacharacters — pipes, redirects, substitution, or chaining (`;`, `&&`)
+# can hide a mutating command behind a safe-looking prefix (e.g.
+# `ls; rm -rf ~` or `echo hi > ~/.bashrc`), so any of those still asks.
+_SAFE_SHELL_COMMANDS = {
+    "ls", "cat", "pwd", "whoami", "date", "df", "du", "ps", "uname",
+    "echo", "which", "uptime", "free", "hostname", "id", "env",
+}
+_SHELL_METACHARACTERS = set("|&;$`<>()")
+
+
+def _shell_command_is_dangerous(tool_input: dict) -> bool:
+    command = tool_input.get("command", "")
+    if any(ch in command for ch in _SHELL_METACHARACTERS):
+        return True
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return True  # unparsable (e.g. unmatched quote) — ask to be safe
+    return not parts or parts[0] not in _SAFE_SHELL_COMMANDS
 
 
 @tool(
@@ -64,7 +88,8 @@ def read_notes() -> str:
         "properties": {"text": {"type": "string"}},
         "required": ["text"],
     },
-    dangerous=True,  # writes to disk
+    # Only touches the assistant's own notes file — low blast radius,
+    # trivially reversible, so no confirmation needed.
 )
 def append_note(text: str) -> str:
     with settings.notes_path.open("a") as f:
@@ -82,7 +107,10 @@ def append_note(text: str) -> str:
         "properties": {"command": {"type": "string"}},
         "required": ["command"],
     },
-    dangerous=True,  # arbitrary execution — always confirmed by the user
+    # A fixed allowlist of plain, unchained read-only commands runs without
+    # asking; anything else (mutating, or using shell metacharacters that
+    # could hide a mutating command) still requires confirmation.
+    is_dangerous=_shell_command_is_dangerous,
 )
 def run_shell(command: str) -> str:
     result = subprocess.run(
