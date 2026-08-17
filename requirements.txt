@@ -4,3 +4,4 @@ chromadb>=0.5
 pytest>=8.0
 fastapi>=0.115
 uvicorn[standard]>=0.30
+websockets>=13.0
