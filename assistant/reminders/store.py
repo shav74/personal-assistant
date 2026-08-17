@@ -22,19 +22,36 @@ class ReminderStore:
                 text TEXT NOT NULL,
                 due_at TEXT,
                 done INTEGER NOT NULL DEFAULT 0,
+                google_event_id TEXT,
                 created_at TEXT NOT NULL
             )
             """
         )
+        # Migration: databases created before google_event_id existed won't
+        # have picked it up from CREATE TABLE IF NOT EXISTS above.
+        existing_columns = {row[1] for row in self.conn.execute("PRAGMA table_info(reminders)")}
+        if "google_event_id" not in existing_columns:
+            self.conn.execute("ALTER TABLE reminders ADD COLUMN google_event_id TEXT")
         self.conn.commit()
 
-    def add(self, text: str, due_at: str | None = None) -> int:
+    def add(self, text: str, due_at: str | None = None, google_event_id: str | None = None) -> int:
         cur = self.conn.execute(
-            "INSERT INTO reminders (text, due_at, created_at) VALUES (?, ?, ?)",
-            (text, due_at, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO reminders (text, due_at, google_event_id, created_at) VALUES (?, ?, ?, ?)",
+            (text, due_at, google_event_id, datetime.now(timezone.utc).isoformat()),
         )
         self.conn.commit()
         return cur.lastrowid
+
+    def get(self, reminder_id: int) -> tuple[int, str, str | None, bool, str | None] | None:
+        cur = self.conn.execute(
+            "SELECT id, text, due_at, done, google_event_id FROM reminders WHERE id = ?",
+            (reminder_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        id_, text, due_at, done, google_event_id = row
+        return (id_, text, due_at, bool(done), google_event_id)
 
     def list(self, include_done: bool = False) -> list[tuple[int, str, str | None, bool]]:
         query = "SELECT id, text, due_at, done FROM reminders"

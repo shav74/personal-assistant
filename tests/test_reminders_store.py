@@ -1,4 +1,40 @@
+import sqlite3
+
 from assistant.reminders.store import ReminderStore
+
+
+def test_get_returns_full_row_including_google_event_id(tmp_path):
+    store = ReminderStore(tmp_path / "reminders.db")
+    reminder_id = store.add("buy solder", due_at="2026-09-01T09:00:00", google_event_id="evt-1")
+    assert store.get(reminder_id) == (reminder_id, "buy solder", "2026-09-01T09:00:00", False, "evt-1")
+    assert store.get(9999) is None
+
+
+def test_migrates_pre_existing_db_missing_google_event_id_column(tmp_path):
+    db_path = tmp_path / "legacy_reminders.db"
+    # Simulate a database created before google_event_id existed.
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text TEXT NOT NULL,
+            due_at TEXT,
+            done INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO reminders (text, created_at) VALUES ('pre-existing', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    store = ReminderStore(db_path)  # should migrate, not raise
+    assert store.list()[0][1] == "pre-existing"
+    new_id = store.add("new reminder", google_event_id="evt-2")
+    assert store.get(new_id)[4] == "evt-2"
 
 
 def test_add_and_list(tmp_path):

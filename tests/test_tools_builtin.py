@@ -192,12 +192,15 @@ def test_get_weather_falls_back_to_place_name_without_country(monkeypatch):
     assert seen_names == ["Plymouth, UK", "Plymouth"]
 
 
-def test_reminders_round_trip():
+def test_reminders_round_trip(monkeypatch):
+    monkeypatch.setattr(builtin_module, "gcal_create_event", lambda text, due_at: "evt-123")
+    monkeypatch.setattr(builtin_module, "gcal_delete_event", lambda event_id: None)
+
     assert list_reminders() == "(no reminders)"
 
     msg = add_reminder("buy solder", due_at="2026-09-01T09:00:00")
     assert msg.startswith("Added reminder #")
-    reminder_id = int(msg.split("#")[1].rstrip("."))
+    reminder_id = int(re.search(r"#(\d+)", msg).group(1))
 
     listing = list_reminders()
     assert "buy solder" in listing
@@ -210,6 +213,49 @@ def test_reminders_round_trip():
     assert delete_reminder(reminder_id) == f"Deleted reminder #{reminder_id}."
     assert complete_reminder(9999) == "No reminder with ID 9999 found."
     assert delete_reminder(9999) == "No reminder with ID 9999 found."
+
+
+def test_add_reminder_without_due_at_skips_calendar_sync(monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        builtin_module, "gcal_create_event", lambda *a, **k: called.append(1) or "evt"
+    )
+
+    msg = add_reminder("someday task")
+    assert called == []
+    assert "calendar sync" not in msg
+    reminder_id = int(re.search(r"#(\d+)", msg).group(1))
+    assert builtin_module._reminders.get(reminder_id)[4] is None  # no google_event_id
+
+
+def test_add_reminder_calendar_failure_still_saves_locally(monkeypatch):
+    from assistant.integrations.google_calendar import GoogleCalendarUnavailable
+
+    def failing_create(text, due_at):
+        raise GoogleCalendarUnavailable("not configured")
+
+    monkeypatch.setattr(builtin_module, "gcal_create_event", failing_create)
+
+    msg = add_reminder("buy solder", due_at="2026-09-01T09:00:00")
+    assert msg.startswith("Added reminder #")
+    assert "calendar sync skipped: not configured" in msg
+    reminder_id = int(re.search(r"#(\d+)", msg).group(1))
+    assert "buy solder" in list_reminders()  # still saved locally
+    assert builtin_module._reminders.get(reminder_id)[4] is None
+
+
+def test_delete_reminder_removes_calendar_event_when_present(monkeypatch):
+    monkeypatch.setattr(builtin_module, "gcal_create_event", lambda text, due_at: "evt-456")
+    deleted_ids = []
+    monkeypatch.setattr(
+        builtin_module, "gcal_delete_event", lambda event_id: deleted_ids.append(event_id)
+    )
+
+    msg = add_reminder("call the dentist", due_at="2026-09-01T09:00:00")
+    reminder_id = int(re.search(r"#(\d+)", msg).group(1))
+
+    delete_reminder(reminder_id)
+    assert deleted_ids == ["evt-456"]
 
 
 def test_web_search_without_key_returns_instructive_message(monkeypatch):

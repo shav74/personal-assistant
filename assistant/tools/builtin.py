@@ -17,6 +17,9 @@ from pathlib import Path
 import requests
 
 from ..config import settings
+from ..integrations.google_calendar import GoogleCalendarUnavailable
+from ..integrations.google_calendar import create_event as gcal_create_event
+from ..integrations.google_calendar import delete_event as gcal_delete_event
 from ..memory.store import MemoryStore
 from ..reminders.store import ReminderStore
 from .base import tool
@@ -299,8 +302,9 @@ def get_weather(location: str) -> str:
 
 @tool(
     "add_reminder",
-    "Add a reminder for the user. Use when they ask to be reminded of "
-    "something, with an optional due date/time.",
+    "Add a reminder for the user, and create a matching Google Calendar "
+    "event if a due date/time is given. Use when they ask to be reminded "
+    "of something.",
     input_schema={
         "type": "object",
         "properties": {
@@ -309,7 +313,8 @@ def get_weather(location: str) -> str:
                 "type": "string",
                 "description": (
                     "When it's due, ISO 8601 (e.g. 2026-08-20T09:00:00). "
-                    "Omit if there's no specific time."
+                    "Omit if there's no specific time — calendar sync needs a "
+                    "time, so reminders without one stay local-only."
                 ),
             },
         },
@@ -317,8 +322,15 @@ def get_weather(location: str) -> str:
     },
 )
 def add_reminder(text: str, due_at: str | None = None) -> str:
-    reminder_id = _reminders.add(text, due_at)
-    return f"Added reminder #{reminder_id}."
+    google_event_id = None
+    calendar_note = ""
+    if due_at:
+        try:
+            google_event_id = gcal_create_event(text, due_at)
+        except GoogleCalendarUnavailable as exc:
+            calendar_note = f" (calendar sync skipped: {exc})"
+    reminder_id = _reminders.add(text, due_at, google_event_id)
+    return f"Added reminder #{reminder_id}.{calendar_note}"
 
 
 @tool(
@@ -360,7 +372,8 @@ def complete_reminder(reminder_id: int) -> str:
 
 @tool(
     "delete_reminder",
-    "Delete a reminder by its ID.",
+    "Delete a reminder by its ID. Also removes its Google Calendar event, "
+    "if it had one.",
     input_schema={
         "type": "object",
         "properties": {"reminder_id": {"type": "integer"}},
@@ -368,9 +381,17 @@ def complete_reminder(reminder_id: int) -> str:
     },
 )
 def delete_reminder(reminder_id: int) -> str:
-    if _reminders.delete(reminder_id):
-        return f"Deleted reminder #{reminder_id}."
-    return f"No reminder with ID {reminder_id} found."
+    existing = _reminders.get(reminder_id)
+    if existing is None:
+        return f"No reminder with ID {reminder_id} found."
+    _, _, _, _, google_event_id = existing
+    if google_event_id:
+        try:
+            gcal_delete_event(google_event_id)
+        except GoogleCalendarUnavailable:
+            pass  # best-effort — the local reminder still gets deleted
+    _reminders.delete(reminder_id)
+    return f"Deleted reminder #{reminder_id}."
 
 
 @tool(

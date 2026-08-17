@@ -23,6 +23,9 @@ class Settings:
     # Optional — web_search tool returns an instructive error until this is set.
     # Free tier: https://brave.com/search/api/
     brave_search_api_key: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
+    # Optional — Google Calendar sync for reminders. See
+    # assistant/integrations/google_calendar.py for setup steps.
+    google_calendar_id: str = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
     @property
     def db_path(self) -> Path:
@@ -38,6 +41,19 @@ class Settings:
     def reminders_db_path(self) -> Path:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         return self.data_dir / "reminders.db"
+
+    @property
+    def google_credentials_path(self) -> Path:
+        override = os.getenv("GOOGLE_CREDENTIALS_PATH")
+        if override:
+            return Path(override).expanduser()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        return self.data_dir / "google_credentials.json"
+
+    @property
+    def google_token_path(self) -> Path:
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        return self.data_dir / "google_token.json"
 
 
 settings = Settings()
