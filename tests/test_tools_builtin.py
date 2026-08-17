@@ -1,15 +1,30 @@
 import re
+from types import SimpleNamespace
 
+import assistant.tools.builtin as builtin_module
+from assistant.config import Settings
 from assistant.tools.builtin import (
     _shell_command_is_dangerous,
+    add_reminder,
     append_note,
+    complete_reminder,
+    delete_reminder,
     forget,
     get_time,
+    get_weather,
     list_memories,
+    list_reminders,
+    read_file,
     read_notes,
     remember,
     run_shell,
+    search_files,
+    web_search,
 )
+
+
+def fake_response(payload):
+    return SimpleNamespace(json=lambda: payload, raise_for_status=lambda: None)
 
 
 def test_get_time_format():
@@ -73,3 +88,154 @@ def test_shell_allowlist_blocks_mutating_and_chained_commands():
     ]
     for cmd in cases:
         assert _shell_command_is_dangerous({"command": cmd}) is True
+
+
+def test_search_files_finds_matching_names(tmp_path):
+    (tmp_path / "report_draft.txt").write_text("hi")
+    (tmp_path / "other.txt").write_text("hi")
+    (tmp_path / "subdir").mkdir()
+    (tmp_path / "subdir" / "report_final.txt").write_text("hi")
+
+    result = search_files("report", root=str(tmp_path))
+    assert "report_draft.txt" in result
+    assert "report_final.txt" in result
+    assert "other.txt" not in result
+
+
+def test_search_files_no_matches(tmp_path):
+    (tmp_path / "foo.txt").write_text("hi")
+    assert "No files matching" in search_files("zzz", root=str(tmp_path))
+
+
+def test_search_files_bad_root(tmp_path):
+    assert "is not a directory" in search_files("x", root=str(tmp_path / "missing"))
+
+
+def test_read_file_round_trip(tmp_path):
+    p = tmp_path / "note.txt"
+    p.write_text("hello world")
+    assert read_file(str(p)) == "hello world"
+
+
+def test_read_file_truncates_long_content(tmp_path):
+    p = tmp_path / "big.txt"
+    p.write_text("x" * 25_000)
+    result = read_file(str(p))
+    assert "truncated" in result
+    assert len(result) < 25_000
+
+
+def test_read_file_not_a_file(tmp_path):
+    assert "is not a file" in read_file(str(tmp_path))
+
+
+def test_get_weather_success(monkeypatch):
+    calls = []
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append(url)
+        if "geocoding" in url:
+            return fake_response({
+                "results": [{
+                    "name": "Plymouth", "admin1": "England", "country": "United Kingdom",
+                    "latitude": 50.37, "longitude": -4.14,
+                }]
+            })
+        return fake_response({
+            "current": {
+                "temperature_2m": 18.5,
+                "relative_humidity_2m": 70,
+                "weather_code": 2,
+                "wind_speed_10m": 12.0,
+            }
+        })
+
+    monkeypatch.setattr(builtin_module.requests, "get", fake_get)
+    result = get_weather("Plymouth")
+    assert "Plymouth" in result
+    assert "18.5" in result
+    assert "partly cloudy" in result
+    assert len(calls) == 2
+
+
+def test_get_weather_unknown_location(monkeypatch):
+    monkeypatch.setattr(
+        builtin_module.requests, "get", lambda *a, **k: fake_response({"results": []})
+    )
+    assert "Couldn't find a location" in get_weather("Nowhereville")
+
+
+def test_get_weather_falls_back_to_place_name_without_country(monkeypatch):
+    seen_names = []
+
+    def fake_get(url, params=None, timeout=None):
+        if "geocoding" in url:
+            seen_names.append(params["name"])
+            if params["name"] == "Plymouth, UK":
+                return fake_response({"results": []})
+            return fake_response({
+                "results": [{
+                    "name": "Plymouth", "admin1": "England", "country": "United Kingdom",
+                    "latitude": 50.37, "longitude": -4.14,
+                }]
+            })
+        return fake_response({
+            "current": {
+                "temperature_2m": 18.5, "relative_humidity_2m": 70,
+                "weather_code": 2, "wind_speed_10m": 12.0,
+            }
+        })
+
+    monkeypatch.setattr(builtin_module.requests, "get", fake_get)
+    result = get_weather("Plymouth, UK")
+    assert "Plymouth" in result
+    assert seen_names == ["Plymouth, UK", "Plymouth"]
+
+
+def test_reminders_round_trip():
+    assert list_reminders() == "(no reminders)"
+
+    msg = add_reminder("buy solder", due_at="2026-09-01T09:00:00")
+    assert msg.startswith("Added reminder #")
+    reminder_id = int(msg.split("#")[1].rstrip("."))
+
+    listing = list_reminders()
+    assert "buy solder" in listing
+    assert "2026-09-01T09:00:00" in listing
+
+    assert complete_reminder(reminder_id) == f"Marked reminder #{reminder_id} as done."
+    assert list_reminders() == "(no reminders)"
+    assert "[done]" in list_reminders(include_done=True)
+
+    assert delete_reminder(reminder_id) == f"Deleted reminder #{reminder_id}."
+    assert complete_reminder(9999) == "No reminder with ID 9999 found."
+    assert delete_reminder(9999) == "No reminder with ID 9999 found."
+
+
+def test_web_search_without_key_returns_instructive_message(monkeypatch):
+    monkeypatch.setattr(
+        builtin_module,
+        "settings",
+        Settings(brave_search_api_key="", data_dir=builtin_module.settings.data_dir),
+    )
+    assert "BRAVE_SEARCH_API_KEY" in web_search("test query")
+
+
+def test_web_search_with_key_returns_results(monkeypatch):
+    monkeypatch.setattr(
+        builtin_module,
+        "settings",
+        Settings(brave_search_api_key="fake-key", data_dir=builtin_module.settings.data_dir),
+    )
+    monkeypatch.setattr(
+        builtin_module.requests,
+        "get",
+        lambda *a, **k: fake_response({
+            "web": {"results": [
+                {"title": "Result 1", "url": "https://example.com", "description": "desc"}
+            ]}
+        }),
+    )
+    result = web_search("test query")
+    assert "Result 1" in result
+    assert "https://example.com" in result

@@ -8,15 +8,21 @@ requires confirmation.
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from datetime import datetime
+from pathlib import Path
+
+import requests
 
 from ..config import settings
 from ..memory.store import MemoryStore
+from ..reminders.store import ReminderStore
 from .base import tool
 
 _memory = MemoryStore(settings.db_path)
+_reminders = ReminderStore(settings.reminders_db_path)
 
 # Read-only / informational commands that run without confirmation. Matched
 # on the first word only, and only when the command has no shell
@@ -157,3 +163,245 @@ def run_shell(command: str) -> str:
     )
     output = (result.stdout + result.stderr).strip()
     return output[:5000] or "(no output)"
+
+
+_FILE_SEARCH_SKIP_DIRS = {"__pycache__", "node_modules", ".venv", "venv", ".cache"}
+_MAX_SEARCH_RESULTS = 30
+_MAX_FILE_READ_CHARS = 20_000
+
+
+@tool(
+    "search_files",
+    "Search for files by filename (case-insensitive substring match) under "
+    "a directory. Defaults to the user's home directory if no root is given.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Substring to match against filenames."},
+            "root": {
+                "type": "string",
+                "description": "Directory to search under. Defaults to the home directory.",
+            },
+        },
+        "required": ["query"],
+    },
+)
+def search_files(query: str, root: str | None = None) -> str:
+    base = Path(root).expanduser() if root else Path.home()
+    if not base.is_dir():
+        return f"'{base}' is not a directory."
+
+    query_lower = query.lower()
+    matches: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [
+            d for d in dirnames if d not in _FILE_SEARCH_SKIP_DIRS and not d.startswith(".")
+        ]
+        for name in filenames:
+            if query_lower in name.lower():
+                matches.append(str(Path(dirpath) / name))
+                if len(matches) >= _MAX_SEARCH_RESULTS:
+                    break
+        if len(matches) >= _MAX_SEARCH_RESULTS:
+            break
+
+    if not matches:
+        return f"No files matching '{query}' found under {base}."
+    suffix = " (truncated, more matches exist)" if len(matches) >= _MAX_SEARCH_RESULTS else ""
+    return "\n".join(matches) + suffix
+
+
+@tool(
+    "read_file",
+    "Read a text file's contents by path.",
+    input_schema={
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"],
+    },
+)
+def read_file(path: str) -> str:
+    file_path = Path(path).expanduser()
+    if not file_path.is_file():
+        return f"'{file_path}' is not a file."
+    try:
+        content = file_path.read_text(errors="replace")
+    except OSError as exc:
+        return f"Couldn't read '{file_path}': {exc}"
+    if len(content) > _MAX_FILE_READ_CHARS:
+        return content[:_MAX_FILE_READ_CHARS] + f"\n... (truncated, {len(content)} chars total)"
+    return content
+
+
+_WMO_WEATHER_CODES = {
+    0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast",
+    45: "fog", 48: "depositing rime fog",
+    51: "light drizzle", 53: "moderate drizzle", 55: "dense drizzle",
+    61: "slight rain", 63: "moderate rain", 65: "heavy rain",
+    71: "slight snow", 73: "moderate snow", 75: "heavy snow",
+    80: "slight rain showers", 81: "moderate rain showers", 82: "violent rain showers",
+    95: "thunderstorm", 96: "thunderstorm with slight hail", 99: "thunderstorm with heavy hail",
+}
+
+
+def _geocode(location: str) -> list[dict]:
+    geo = requests.get(
+        "https://geocoding-api.open-meteo.com/v1/search",
+        params={"name": location, "count": 1},
+        timeout=10,
+    ).json()
+    return geo.get("results") or []
+
+
+@tool(
+    "get_weather",
+    "Get current weather conditions for a location (city name or place).",
+    input_schema={
+        "type": "object",
+        "properties": {"location": {"type": "string"}},
+        "required": ["location"],
+    },
+)
+def get_weather(location: str) -> str:
+    results = _geocode(location)
+    if not results and "," in location:
+        # Open-Meteo's geocoder matches on bare place names — "Plymouth, UK"
+        # finds nothing where "Plymouth" does, so retry with just that part.
+        results = _geocode(location.split(",")[0].strip())
+    if not results:
+        return f"Couldn't find a location matching '{location}'."
+    place = results[0]
+
+    forecast = requests.get(
+        "https://api.open-meteo.com/v1/forecast",
+        params={
+            "latitude": place["latitude"],
+            "longitude": place["longitude"],
+            "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
+            "timezone": "auto",
+        },
+        timeout=10,
+    ).json()
+    current = forecast.get("current")
+    if not current:
+        return f"Couldn't fetch weather for {place.get('name', location)}."
+
+    condition = _WMO_WEATHER_CODES.get(current.get("weather_code"), "unknown conditions")
+    place_name = ", ".join(
+        part for part in [place.get("name"), place.get("admin1"), place.get("country")] if part
+    )
+    return (
+        f"{place_name}: {current['temperature_2m']}°C, {condition}, "
+        f"humidity {current['relative_humidity_2m']}%, "
+        f"wind {current['wind_speed_10m']} km/h"
+    )
+
+
+@tool(
+    "add_reminder",
+    "Add a reminder for the user. Use when they ask to be reminded of "
+    "something, with an optional due date/time.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "What to remind the user about."},
+            "due_at": {
+                "type": "string",
+                "description": (
+                    "When it's due, ISO 8601 (e.g. 2026-08-20T09:00:00). "
+                    "Omit if there's no specific time."
+                ),
+            },
+        },
+        "required": ["text"],
+    },
+)
+def add_reminder(text: str, due_at: str | None = None) -> str:
+    reminder_id = _reminders.add(text, due_at)
+    return f"Added reminder #{reminder_id}."
+
+
+@tool(
+    "list_reminders",
+    "List the user's pending reminders, soonest due first. Set include_done "
+    "to true to also show completed ones.",
+    input_schema={
+        "type": "object",
+        "properties": {"include_done": {"type": "boolean"}},
+        "required": [],
+    },
+)
+def list_reminders(include_done: bool = False) -> str:
+    reminders = _reminders.list(include_done=include_done)
+    if not reminders:
+        return "(no reminders)"
+    lines = []
+    for id_, text, due_at, done in reminders:
+        marker = "[done] " if done else ""
+        due = f" (due {due_at})" if due_at else ""
+        lines.append(f"#{id_} {marker}{text}{due}")
+    return "\n".join(lines)
+
+
+@tool(
+    "complete_reminder",
+    "Mark a reminder as done by its ID.",
+    input_schema={
+        "type": "object",
+        "properties": {"reminder_id": {"type": "integer"}},
+        "required": ["reminder_id"],
+    },
+)
+def complete_reminder(reminder_id: int) -> str:
+    if _reminders.complete(reminder_id):
+        return f"Marked reminder #{reminder_id} as done."
+    return f"No reminder with ID {reminder_id} found."
+
+
+@tool(
+    "delete_reminder",
+    "Delete a reminder by its ID.",
+    input_schema={
+        "type": "object",
+        "properties": {"reminder_id": {"type": "integer"}},
+        "required": ["reminder_id"],
+    },
+)
+def delete_reminder(reminder_id: int) -> str:
+    if _reminders.delete(reminder_id):
+        return f"Deleted reminder #{reminder_id}."
+    return f"No reminder with ID {reminder_id} found."
+
+
+@tool(
+    "web_search",
+    "Search the web and return brief result summaries.",
+    input_schema={
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    },
+)
+def web_search(query: str) -> str:
+    if not settings.brave_search_api_key:
+        return (
+            "Web search isn't configured — set BRAVE_SEARCH_API_KEY in .env "
+            "(free tier: https://brave.com/search/api/)."
+        )
+    response = requests.get(
+        "https://api.search.brave.com/res/v1/web/search",
+        headers={
+            "Accept": "application/json",
+            "X-Subscription-Token": settings.brave_search_api_key,
+        },
+        params={"q": query, "count": 5},
+        timeout=10,
+    )
+    response.raise_for_status()
+    results = response.json().get("web", {}).get("results", [])[:5]
+    if not results:
+        return "No results found."
+    return "\n\n".join(
+        f"{r.get('title', '')}\n{r.get('url', '')}\n{r.get('description', '')}"
+        for r in results
+    )

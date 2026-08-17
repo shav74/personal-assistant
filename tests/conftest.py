@@ -12,6 +12,7 @@ import pytest
 import assistant.agent as agent_module
 from assistant.config import Settings
 from assistant.memory.store import MemoryStore
+from assistant.reminders.store import ReminderStore
 from assistant.tools import builtin as builtin_tools
 
 
@@ -25,5 +26,8 @@ def isolated_settings(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(builtin_tools, "settings", fake_settings)
     monkeypatch.setattr(builtin_tools, "_memory", MemoryStore(fake_settings.db_path))
+    monkeypatch.setattr(
+        builtin_tools, "_reminders", ReminderStore(fake_settings.reminders_db_path)
+    )
     monkeypatch.setattr(agent_module, "settings", fake_settings)
     return fake_settings
