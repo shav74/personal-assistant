@@ -71,6 +71,41 @@ def remember(fact: str, category: str = "general") -> str:
 
 
 @tool(
+    "list_memories",
+    "List every fact currently remembered about the user, with its ID and "
+    "category. Use this to see what's stored — e.g. before calling forget, "
+    "or when asked what you know about the user.",
+)
+def list_memories() -> str:
+    facts = _memory.all_facts()
+    if not facts:
+        return "(nothing remembered yet)"
+    return "\n".join(f"#{id_} [{cat}] {content}" for id_, content, cat in facts)
+
+
+@tool(
+    "forget",
+    "Delete a previously remembered fact by its ID. Use list_memories first "
+    "if you don't already know the ID. Only touches the assistant's own "
+    "memory store, so no confirmation is required.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "fact_id": {
+                "type": "integer",
+                "description": "The ID of the fact to delete, from list_memories.",
+            },
+        },
+        "required": ["fact_id"],
+    },
+)
+def forget(fact_id: int) -> str:
+    if _memory.delete_fact(fact_id):
+        return f"Forgot fact #{fact_id}."
+    return f"No fact with ID {fact_id} found."
+
+
+@tool(
     "read_notes",
     "Read the user's notes file.",
 )
