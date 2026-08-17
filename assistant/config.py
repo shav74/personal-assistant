@@ -15,8 +15,8 @@ load_dotenv()
 class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     # Sonnet is a good default brain; drop to Haiku for cheap/fast turns.
-    model: str = os.getenv("ASSISTANT_MODEL", "claude-sonnet-4-6")
-    assistant_name: str = os.getenv("ASSISTANT_NAME", "Aria")
+    model: str = os.getenv("ASSISTANT_MODEL", "claude-sonnet-5")
+    assistant_name: str = os.getenv("ASSISTANT_NAME", "Niamh")
     data_dir: Path = Path(os.getenv("ASSISTANT_DATA_DIR", "~/.assistant")).expanduser()
 
     @property
