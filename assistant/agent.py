@@ -56,12 +56,14 @@ class Agent:
         self.max_iterations = max_iterations
         self.memory = MemoryStore(settings.db_path)
         self.messages: list[dict] = []  # running conversation history
+        self._current_query = ""  # this turn's user text, for memory recall
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
     def chat(self, user_input: str) -> str:
         """Process one user turn and return the assistant's final reply."""
+        self._current_query = user_input
         self.messages.append({"role": "user", "content": user_input})
 
         for _ in range(self.max_iterations):
@@ -102,7 +104,7 @@ class Agent:
     # Internals
     # ------------------------------------------------------------------
     def _call_llm(self):
-        memories = self.memory.format_for_prompt() or "(nothing yet)"
+        memories = self.memory.format_for_prompt(self._current_query) or "(nothing yet)"
         return self.client.messages.create(
             model=self.model,
             max_tokens=4096,
