@@ -45,8 +45,8 @@ Run tests with `pytest`.
 ## Roadmap
 
 - [x] **Phase 1** — core agent: loop, tools, memory, CLI
-- [x] Phase 1.5 — Chroma semantic memory, FastAPI/WebSocket server, tests
-- [ ] more tools (weather, calendar/reminders, file search, ...)
+- [x] Phase 1.5 — Chroma semantic memory, FastAPI/WebSocket server, tests,
+  more tools (weather, reminders, file search, web search)
 - [ ] **Phase 2** — voice: Windows audio frontend (wake word + Whisper)
   streaming to this backend over WebSocket; Piper TTS out
 - [ ] **Phase 3** — IoT: MQTT / Home Assistant tools
