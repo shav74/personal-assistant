@@ -40,8 +40,8 @@ class Settings:
     server_host: str = os.getenv("ASSISTANT_SERVER_HOST", "127.0.0.1")
     server_port: int = int(os.getenv("ASSISTANT_SERVER_PORT", "8000"))
     # Optional — web_search tool returns an instructive error until this is set.
-    # Free tier: https://brave.com/search/api/
-    brave_search_api_key: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
+    # Free tier: https://tavily.com (1,000 queries/month, no card required).
+    tavily_api_key: str = os.getenv("TAVILY_API_KEY", "")
     # Optional — Google Calendar sync for reminders. See
     # assistant/integrations/google_calendar.py for setup steps.
     google_calendar_id: str = os.getenv("GOOGLE_CALENDAR_ID", "primary")

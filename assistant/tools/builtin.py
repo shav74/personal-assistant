@@ -404,25 +404,25 @@ def delete_reminder(reminder_id: int) -> str:
     },
 )
 def web_search(query: str) -> str:
-    if not settings.brave_search_api_key:
+    if not settings.tavily_api_key:
         return (
-            "Web search isn't configured — set BRAVE_SEARCH_API_KEY in .env "
-            "(free tier: https://brave.com/search/api/)."
+            "Web search isn't configured — set TAVILY_API_KEY in .env "
+            "(free tier: https://tavily.com, no card required)."
         )
-    response = requests.get(
-        "https://api.search.brave.com/res/v1/web/search",
+    response = requests.post(
+        "https://api.tavily.com/search",
         headers={
-            "Accept": "application/json",
-            "X-Subscription-Token": settings.brave_search_api_key,
+            "Authorization": f"Bearer {settings.tavily_api_key}",
+            "Content-Type": "application/json",
         },
-        params={"q": query, "count": 5},
+        json={"query": query, "search_depth": "basic", "max_results": 5},
         timeout=10,
     )
     response.raise_for_status()
-    results = response.json().get("web", {}).get("results", [])[:5]
+    results = response.json().get("results", [])[:5]
     if not results:
         return "No results found."
     return "\n\n".join(
-        f"{r.get('title', '')}\n{r.get('url', '')}\n{r.get('description', '')}"
+        f"{r.get('title', '')}\n{r.get('url', '')}\n{r.get('content', '')}"
         for r in results
     )

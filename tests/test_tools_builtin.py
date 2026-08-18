@@ -262,26 +262,32 @@ def test_web_search_without_key_returns_instructive_message(monkeypatch):
     monkeypatch.setattr(
         builtin_module,
         "settings",
-        Settings(brave_search_api_key="", data_dir=builtin_module.settings.data_dir),
+        Settings(tavily_api_key="", data_dir=builtin_module.settings.data_dir),
     )
-    assert "BRAVE_SEARCH_API_KEY" in web_search("test query")
+    assert "TAVILY_API_KEY" in web_search("test query")
 
 
 def test_web_search_with_key_returns_results(monkeypatch):
     monkeypatch.setattr(
         builtin_module,
         "settings",
-        Settings(brave_search_api_key="fake-key", data_dir=builtin_module.settings.data_dir),
+        Settings(tavily_api_key="fake-key", data_dir=builtin_module.settings.data_dir),
     )
-    monkeypatch.setattr(
-        builtin_module.requests,
-        "get",
-        lambda *a, **k: fake_response({
-            "web": {"results": [
-                {"title": "Result 1", "url": "https://example.com", "description": "desc"}
-            ]}
-        }),
-    )
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["headers"] = headers
+        captured["json"] = json
+        return fake_response({
+            "results": [
+                {"title": "Result 1", "url": "https://example.com", "content": "desc"}
+            ]
+        })
+
+    monkeypatch.setattr(builtin_module.requests, "post", fake_post)
     result = web_search("test query")
+
     assert "Result 1" in result
     assert "https://example.com" in result
+    assert captured["headers"]["Authorization"] == "Bearer fake-key"
+    assert captured["json"]["query"] == "test query"
