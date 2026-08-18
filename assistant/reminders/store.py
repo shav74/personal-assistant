@@ -61,6 +61,14 @@ class ReminderStore:
         cur = self.conn.execute(query)
         return [(id_, text, due_at, bool(done)) for id_, text, due_at, done in cur.fetchall()]
 
+    def set_google_event_id(self, reminder_id: int, google_event_id: str) -> bool:
+        cur = self.conn.execute(
+            "UPDATE reminders SET google_event_id = ? WHERE id = ?",
+            (google_event_id, reminder_id),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def complete(self, reminder_id: int) -> bool:
         cur = self.conn.execute(
             "UPDATE reminders SET done = 1 WHERE id = ?", (reminder_id,)

@@ -37,6 +37,16 @@ def test_migrates_pre_existing_db_missing_google_event_id_column(tmp_path):
     assert store.get(new_id)[4] == "evt-2"
 
 
+def test_set_google_event_id(tmp_path):
+    store = ReminderStore(tmp_path / "reminders.db")
+    reminder_id = store.add("call the dentist")
+    assert store.get(reminder_id)[4] is None
+
+    assert store.set_google_event_id(reminder_id, "evt-99") is True
+    assert store.get(reminder_id)[4] == "evt-99"
+    assert store.set_google_event_id(9999, "evt-x") is False
+
+
 def test_add_and_list(tmp_path):
     store = ReminderStore(tmp_path / "reminders.db")
     reminder_id = store.add("buy solder")
