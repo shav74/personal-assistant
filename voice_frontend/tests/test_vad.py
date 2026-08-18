@@ -3,17 +3,15 @@ import numpy as np
 import voice_frontend.vad as vad_module
 from voice_frontend.vad import EndOfSpeechDetector
 
-from .fakes import FakeCobra
+from .fakes import FakeOpenWakeWordVAD
 
 
 def make_detector(monkeypatch, script, silence_hangover_ms=100, voice_threshold=0.5):
-    # frame_length=512, sample_rate=16000 -> ~32ms/frame; 100ms hangover -> ~3 frames
-    fake = FakeCobra(script=script)
-    monkeypatch.setattr(vad_module.pvcobra, "create", lambda **kwargs: fake)
+    # frame_length=512, sample_rate=16000 -> 32ms/frame; 100ms hangover -> ~3 frames
+    fake = FakeOpenWakeWordVAD(script=script)
+    monkeypatch.setattr(vad_module, "VAD", lambda: fake)
     detector = EndOfSpeechDetector(
-        access_key="test-key",
-        silence_hangover_ms=silence_hangover_ms,
-        voice_threshold=voice_threshold,
+        silence_hangover_ms=silence_hangover_ms, voice_threshold=voice_threshold
     )
     return detector, fake
 
@@ -47,17 +45,12 @@ def test_silence_run_resets_on_renewed_speech(monkeypatch):
     assert detector.update(frame) is True  # only now has a full 3-frame silent run
 
 
-def test_reset_clears_state(monkeypatch):
-    detector, _fake = make_detector(monkeypatch, script=[0.9])
+def test_reset_clears_state_and_calls_reset_states(monkeypatch):
+    detector, fake = make_detector(monkeypatch, script=[0.9])
     frame = np.zeros(512, dtype=np.int16)
     detector.update(frame)
     assert detector.heard_speech is True
 
     detector.reset()
     assert detector.heard_speech is False
-
-
-def test_close_deletes_underlying_cobra(monkeypatch):
-    detector, fake = make_detector(monkeypatch, script=[])
-    detector.close()
-    assert fake.deleted is True
+    assert fake.reset_calls == 1

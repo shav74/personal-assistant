@@ -17,25 +17,38 @@ follow-up.
   packages like this project depends on)
 - The backend already set up and runnable (see the main repo's README)
 
-## 2. Picovoice setup (wake word + VAD)
+## 2. Wake word setup (openWakeWord)
 
-1. Create a free account at [console.picovoice.ai](https://console.picovoice.ai).
-2. Copy your **AccessKey** into `.env` as `PICOVOICE_ACCESS_KEY`.
-3. Under **Wake Word**, train two custom models — type the text exactly:
-   - `Neeve`
-   - `hey Neeve`
+Fully local, free, no account needed at all — a plain `pip install
+openwakeword` (already in `requirements.txt`) gets you the engine. The
+end-of-speech detector (Silero VAD) is bundled inside `openwakeword` too, so
+there's nothing separate to install or configure for that.
+
+You still need to **train** two custom wake-word models, since "neeve"/"hey
+neeve" aren't in openWakeWord's small set of pre-trained example words. The
+reliable free way to do that:
+
+1. Open the official training notebook: [openWakeWord's Google Colab
+   notebook](https://github.com/dscripka/openWakeWord/blob/main/notebooks/training_models.ipynb)
+   (needs only the Google account you already have — no new signup).
+2. Run it once for the wake phrase **"Neeve"**, once for **"hey Neeve"**.
 
    **Not "Niamh"** — that's the assistant's name, but it's Gaelic spelling
    (pronounced "neeve") that an English text→phoneme model would mispronounce.
    Training on the phonetic spelling "Neeve" gets you a model that correctly
    fires on how it's actually said; the assistant still introduces itself as
    "Niamh" everywhere else.
-4. Target platform: **Windows**. Training takes seconds, no audio recording
-   required.
-5. Download both `.ppn` files into `voice_frontend/models/`.
+3. Download the resulting `.onnx` files, and name them after what they
+   detect — openWakeWord reads the *label* from the filename, so name them
+   `neeve.onnx` and `hey_neeve.onnx` (underscore, not space) to match
+   `WAKE_MODEL_PATHS` in `.env.example`.
+4. Put both files in `voice_frontend/models/`.
 
-No separate step is needed for Cobra (the end-of-speech detector) — it's a
-general-purpose model included with the same AccessKey, no Console training.
+(There's also a newer hosted trainer at `openwakeword.com/train` — steer
+clear of it for now. Whether it's still actually free wasn't something I
+could confirm, and this project has already been burned twice by "free"
+services quietly going commercial. The Colab notebook is the verified-free
+path.)
 
 ## 3. Piper TTS setup
 
@@ -61,8 +74,8 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Fill in `PICOVOICE_ACCESS_KEY`, the wake-word `.ppn` paths, and the Piper
-paths from steps 2–3. `BACKEND_WS_URL` normally doesn't need changing —
+Fill in the wake-word `.onnx` paths and the Piper paths from steps 2–3.
+`BACKEND_WS_URL` normally doesn't need changing —
 `ws://localhost:8000/ws/chat` reaches the WSL2-hosted backend directly via
 WSL2's mirrored networking.
 
@@ -85,9 +98,13 @@ Say "neeve" or "hey neeve", wait for the chime, then speak your command.
 
 ## Troubleshooting
 
-- **No `.ppn` file found / AccessKey errors**: double-check the platform
-  selected when training was "Windows", and that the AccessKey in `.env`
-  matches the account you trained the models under.
+- **No `.onnx` file found / wake word never fires**: double-check
+  `WAKE_MODEL_PATHS` in `.env` points at the actual downloaded files, and
+  that the filenames (used as the detection label) don't have typos.
+- **`UserWarning: Specified provider 'CUDAExecutionProvider' is not in
+  available provider names`**: harmless — openWakeWord probes for a CUDA
+  provider and falls back to CPU automatically. Expected on a CPU-only
+  machine, doesn't affect anything.
 - **Nothing happens when you speak**: list available input devices (`import
   sounddevice; sounddevice.query_devices()`) and set `INPUT_DEVICE` in
   `.env` if the wrong mic is picked by default.

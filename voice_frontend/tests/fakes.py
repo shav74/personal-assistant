@@ -1,35 +1,34 @@
-"""Shared fakes for testing without real hardware or the Picovoice/Piper/
+"""Shared fakes for testing without real hardware or the openWakeWord/Piper/
 Whisper SDKs actually doing anything."""
 
 from __future__ import annotations
 
 
-class FakePorcupine:
-    def __init__(self, frame_length=512, sample_rate=16000, script=None):
-        self.frame_length = frame_length
-        self.sample_rate = sample_rate
+class FakeOpenWakeWordModel:
+    """Stands in for openwakeword.Model — .predict() returns a scripted
+    {label: score} dict per call, same shape the real Model returns."""
+
+    def __init__(self, wakeword_model_paths=None, script=None):
+        self.wakeword_model_paths = wakeword_model_paths or []
         self._script = list(script or [])
-        self.deleted = False
 
-    def process(self, frame):
-        return self._script.pop(0) if self._script else -1
-
-    def delete(self):
-        self.deleted = True
+    def predict(self, frame):
+        return self._script.pop(0) if self._script else {}
 
 
-class FakeCobra:
-    def __init__(self, frame_length=512, sample_rate=16000, script=None):
-        self.frame_length = frame_length
-        self.sample_rate = sample_rate
+class FakeOpenWakeWordVAD:
+    """Stands in for openwakeword.VAD — .predict() returns a scripted
+    probability per call."""
+
+    def __init__(self, script=None):
         self._script = list(script or [])
-        self.deleted = False
+        self.reset_calls = 0
 
-    def process(self, frame):
+    def predict(self, frame, frame_size=None):
         return self._script.pop(0) if self._script else 0.0
 
-    def delete(self):
-        self.deleted = True
+    def reset_states(self):
+        self.reset_calls += 1
 
 
 class FakeWS:

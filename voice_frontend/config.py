@@ -22,11 +22,10 @@ def _split_csv(value: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Settings:
     backend_ws_url: str = os.getenv("BACKEND_WS_URL", "ws://localhost:8000/ws/chat")
-    picovoice_access_key: str = os.getenv("PICOVOICE_ACCESS_KEY", "")
-    wake_keyword_paths: tuple[str, ...] = _split_csv(os.getenv("WAKE_KEYWORD_PATHS", ""))
-    wake_keyword_labels: tuple[str, ...] = _split_csv(
-        os.getenv("WAKE_KEYWORD_LABELS", "neeve,hey neeve")
-    )
+    # .onnx wake-word model paths, named after what they detect (openWakeWord
+    # derives the label from the filename) -- e.g. neeve.onnx, hey_neeve.onnx.
+    wake_model_paths: tuple[str, ...] = _split_csv(os.getenv("WAKE_MODEL_PATHS", ""))
+    wake_threshold: float = float(os.getenv("WAKE_THRESHOLD", "0.5"))
     whisper_model_size: str = os.getenv("WHISPER_MODEL_SIZE", "base.en")
     whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
     whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")

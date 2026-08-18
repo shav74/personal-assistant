@@ -1,7 +1,7 @@
 """Voice frontend entry point.
 
-Continuous mic capture -> Porcupine wake word ("neeve" / "hey neeve") ->
-beep acknowledgment -> Cobra-VAD-bounded recording -> faster-whisper
+Continuous mic capture -> openWakeWord wake word ("neeve" / "hey neeve") ->
+beep acknowledgment -> Silero-VAD-bounded recording -> faster-whisper
 transcription -> send to the backend over WebSocket -> speak the reply via
 Piper. Permission confirmations are keyboard y/N in v1 (see confirm.py).
 
@@ -102,21 +102,12 @@ def handle_wake(
 
 
 def run() -> None:
-    if not settings.picovoice_access_key:
-        print("Set PICOVOICE_ACCESS_KEY in your .env file first.")
-        return
-    if not settings.wake_keyword_paths:
-        print("Set WAKE_KEYWORD_PATHS in your .env file first.")
+    if not settings.wake_model_paths:
+        print("Set WAKE_MODEL_PATHS in your .env file first.")
         return
 
-    wake = WakeWordDetector(
-        settings.picovoice_access_key,
-        list(settings.wake_keyword_paths),
-        list(settings.wake_keyword_labels),
-    )
-    vad = EndOfSpeechDetector(
-        settings.picovoice_access_key, settings.silence_hangover_ms, settings.vad_voice_threshold
-    )
+    wake = WakeWordDetector(list(settings.wake_model_paths), settings.wake_threshold)
+    vad = EndOfSpeechDetector(settings.silence_hangover_ms, settings.vad_voice_threshold)
     transcriber = Transcriber(
         settings.whisper_model_size, settings.whisper_device, settings.whisper_compute_type
     )
@@ -125,7 +116,7 @@ def run() -> None:
 
     print(f"Connecting to backend at {settings.backend_ws_url} ...")
     backend.connect()
-    print(f"Listening for: {', '.join(settings.wake_keyword_labels)}. Ctrl+C to exit.")
+    print(f"Listening for: {', '.join(settings.wake_model_paths)}. Ctrl+C to exit.")
 
     mic = MicCapture(
         sample_rate=wake.sample_rate, blocksize=wake.frame_length, device=settings.input_device

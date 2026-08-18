@@ -1,9 +1,9 @@
 """Reassemble a stream of arbitrarily-sized raw PCM chunks into the
 fixed-length int16 frames wake-word/VAD engines require.
 
-Neither the mic callback's chunk size nor Porcupine's/Cobra's frame lengths
-are guaranteed to line up, so consumers can't just assume one callback ==
-one frame — this bridges that gap.
+Neither the mic callback's chunk size nor the wake-word/VAD engines' frame
+lengths are guaranteed to line up, so consumers can't just assume one
+callback == one frame — this bridges that gap.
 """
 
 from __future__ import annotations
