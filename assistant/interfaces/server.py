@@ -20,6 +20,7 @@ Run with:  python -m assistant.interfaces.server
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -47,12 +48,16 @@ class _ConfirmBridge:
     def confirm(self, description: str) -> bool:
         """Called from the agent's worker thread; blocks until answered."""
         self._answered.clear()
-        asyncio.run_coroutine_threadsafe(
+        future = asyncio.run_coroutine_threadsafe(
             self._websocket.send_json(
                 {"type": "confirm_request", "description": description}
             ),
             self._loop,
         )
+        # Must consume the future — if the scheduled send is cancelled or
+        # errors (e.g. connection torn down mid-flight), that exception has
+        # to surface here, not linger unretrieved on an abandoned Future.
+        future.result(timeout=10)
         self._answered.wait()
         return self._answer
 
@@ -97,20 +102,20 @@ async def chat_socket(websocket: WebSocket) -> None:
             reply = await asyncio.to_thread(agent.chat, text)
             await websocket.send_json({"type": "assistant_message", "text": reply})
 
-    reader_task = asyncio.create_task(reader())
-    responder_task = asyncio.create_task(responder())
+    tasks = [asyncio.create_task(reader()), asyncio.create_task(responder())]
     try:
-        done, _pending = await asyncio.wait(
-            [reader_task, responder_task], return_when=asyncio.FIRST_COMPLETED
-        )
+        done, _pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             exc = task.exception()
             if exc is not None and not isinstance(exc, WebSocketDisconnect):
                 raise exc
+    except asyncio.CancelledError:
+        pass  # the connection itself is being torn down — nothing to do
     finally:
-        reader_task.cancel()
-        responder_task.cancel()
-        await asyncio.gather(reader_task, responder_task, return_exceptions=True)
+        for task in tasks:
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def main() -> None:

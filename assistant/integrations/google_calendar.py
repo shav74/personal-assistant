@@ -63,14 +63,20 @@ def create_event(summary: str, start_iso: str) -> str:
     creds = _get_credentials()
     start = datetime.fromisoformat(start_iso)
     end = start + timedelta(minutes=_DEFAULT_EVENT_MINUTES)
+
+    # A bare "2026-08-18T16:00:00" has no UTC offset — Google's API rejects
+    # that outright unless it's paired with an explicit timeZone name. Only
+    # add one when the caller didn't already supply an offset themselves.
+    start_field = {"dateTime": start.isoformat()}
+    end_field = {"dateTime": end.isoformat()}
+    if start.tzinfo is None:
+        start_field["timeZone"] = settings.timezone
+        end_field["timeZone"] = settings.timezone
+
     response = requests.post(
         f"{_API_BASE}/calendars/{settings.google_calendar_id}/events",
         headers={"Authorization": f"Bearer {creds.token}"},
-        json={
-            "summary": summary,
-            "start": {"dateTime": start.isoformat()},
-            "end": {"dateTime": end.isoformat()},
-        },
+        json={"summary": summary, "start": start_field, "end": end_field},
         timeout=10,
     )
     if not response.ok:

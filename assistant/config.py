@@ -11,6 +11,25 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _detect_timezone() -> str:
+    """Best-effort IANA timezone name (e.g. "Europe/London") for events
+    that don't specify one. Google Calendar rejects a bare local datetime
+    with no offset unless it's paired with a timeZone name, so this has to
+    resolve to something real, not just "local"."""
+    override = os.getenv("ASSISTANT_TIMEZONE")
+    if override:
+        return override
+    try:
+        return Path("/etc/timezone").read_text().strip()
+    except OSError:
+        pass
+    try:
+        return os.readlink("/etc/localtime").split("zoneinfo/")[-1]
+    except OSError:
+        pass
+    return "UTC"
+
+
 @dataclass(frozen=True)
 class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
@@ -26,6 +45,10 @@ class Settings:
     # Optional — Google Calendar sync for reminders. See
     # assistant/integrations/google_calendar.py for setup steps.
     google_calendar_id: str = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+    # IANA name (e.g. "Europe/London"), used for calendar events that don't
+    # specify their own offset. Auto-detected from the system; override via
+    # ASSISTANT_TIMEZONE if that's ever wrong.
+    timezone: str = _detect_timezone()
 
     @property
     def db_path(self) -> Path:
