@@ -43,6 +43,15 @@ the transport Phase 2's voice frontend will speak over. Send `{"type":
 
 Run tests with `pytest`.
 
+### Voice frontend
+
+A separate Windows-native sub-project lives in `voice_frontend/` — wake word
+("neeve"/"hey neeve" via Porcupine) → record → transcribe locally (Whisper)
+→ send to this backend over the WebSocket protocol above → speak the reply
+(Piper). See `voice_frontend/README.md` for setup (it needs its own venv,
+its own Picovoice account, and Windows to actually run — different OS from
+this backend). Confirmations are keyboard `y/N` in this version.
+
 ### Google Calendar sync (optional)
 
 `add_reminder` creates a matching calendar event when given a due date/time.
@@ -65,8 +74,10 @@ To turn it on:
 - [x] **Phase 1** — core agent: loop, tools, memory, CLI
 - [x] Phase 1.5 — Chroma semantic memory, FastAPI/WebSocket server, tests,
   more tools (weather, reminders, file search, web search)
-- [ ] **Phase 2** — voice: Windows audio frontend (wake word + Whisper)
-  streaming to this backend over WebSocket; Piper TTS out
+- [~] **Phase 2** — voice: Windows audio frontend (wake word + Whisper)
+  streaming to this backend over WebSocket; Piper TTS out. Code + unit
+  tests done (`voice_frontend/`); real end-to-end hardware verification on
+  Windows still pending
 - [ ] **Phase 3** — IoT: MQTT / Home Assistant tools
 - [ ] **Phase 4** — robotics: ROS2 bridge, LLM task planning → actuation
 
