@@ -25,30 +25,38 @@ end-of-speech detector (Silero VAD) is bundled inside `openwakeword` too, so
 there's nothing separate to install or configure for that.
 
 You still need to **train** two custom wake-word models, since "neeve"/"hey
-neeve" aren't in openWakeWord's small set of pre-trained example words. The
-reliable free way to do that:
+neeve" aren't in openWakeWord's small set of pre-trained example words. Use
+[`automatic_model_training.ipynb`](https://github.com/dscripka/openWakeWord/blob/main/notebooks/automatic_model_training.ipynb) —
+**not** `training_models.ipynb` (that one's a fixed educational walkthrough
+hardcoded around a canned "turn on the office lights" dataset, not a
+generic trainer). The automatic notebook takes an arbitrary target phrase,
+generates its own synthetic training audio via Piper TTS, trains, and
+exports the `.onnx` — fully self-contained, no external dataset download.
+It's Linux-only (the TTS library it uses for data generation requires it),
+which WSL2 satisfies natively — run it right here, no Colab needed.
 
-1. Open the official training notebook: [openWakeWord's Google Colab
-   notebook](https://github.com/dscripka/openWakeWord/blob/main/notebooks/training_models.ipynb)
-   (needs only the Google account you already have — no new signup).
-2. Run it once for the wake phrase **"Neeve"**, once for **"hey Neeve"**.
+1. Download the notebook and open it in a local Jupyter environment (a
+   fresh venv, same idea as the one you already made) — it installs
+   whatever training dependencies it needs itself.
+2. Set the target phrase to **"Neeve"**, run the whole notebook. Repeat
+   for **"hey Neeve"**.
 
    **Not "Niamh"** — that's the assistant's name, but it's Gaelic spelling
    (pronounced "neeve") that an English text→phoneme model would mispronounce.
    Training on the phonetic spelling "Neeve" gets you a model that correctly
    fires on how it's actually said; the assistant still introduces itself as
    "Niamh" everywhere else.
-3. Download the resulting `.onnx` files, and name them after what they
-   detect — openWakeWord reads the *label* from the filename, so name them
-   `neeve.onnx` and `hey_neeve.onnx` (underscore, not space) to match
-   `WAKE_MODEL_PATHS` in `.env.example`.
+3. The notebook saves the exported `.onnx` to its working directory. Rename
+   them after what they detect — openWakeWord reads the *label* from the
+   filename — to `neeve.onnx` and `hey_neeve.onnx` (underscore, not space)
+   to match `WAKE_MODEL_PATHS` in `.env.example`.
 4. Put both files in `voice_frontend/models/`.
 
 (There's also a newer hosted trainer at `openwakeword.com/train` — steer
 clear of it for now. Whether it's still actually free wasn't something I
 could confirm, and this project has already been burned twice by "free"
-services quietly going commercial. The Colab notebook is the verified-free
-path.)
+services quietly going commercial. Running the notebook yourself is the
+verified-free path.)
 
 ## 3. Piper TTS setup
 
